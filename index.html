@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bakery's Emmanuel - Control</title>
+    <style>
+        :root {
+            --color-naranja: #f39c12;
+            --color-texto: #5d4037;
+            --color-rojo: #e74c3c;
+            /* Tonos para los panes */
+            --fondo-calido: #fff9f0; /* Crema tenue */
+            --fondo-frio: #f0f7ff;   /* Azul hielo tenue */
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-image: url('https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=2072&auto=format&fit=crop'); 
+            background-size: cover;
+            background-attachment: fixed;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            min-height: 100vh; margin: 0; padding: 20px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 2rem; border-radius: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            width: 100%; max-width: 400px; text-align: center;
+        }
+
+        h1 { color: var(--color-texto); margin-bottom: 20px; }
+
+        /* Estilo del Monitor en Tiempo Real */
+        .monitor-container {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+            border: 1px solid #eee;
+        }
+        .monitor-item span { display: block; font-size: 0.75rem; color: #7f8c8d; text-transform: uppercase; }
+        .monitor-item strong { font-size: 1.3rem; color: var(--color-texto); }
+        .temp-valor { color: var(--color-naranja) !important; }
+
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; }
+        .tabs button {
+            flex: 1; padding: 10px 5px; border: none; border-radius: 10px;
+            cursor: pointer; font-weight: bold; background: #d7ccc8; color: var(--color-texto);
+        }
+        .tabs button.active { background: var(--color-naranja); color: white; }
+
+        .opcion-pan {
+            padding: 15px; margin: 8px 0;
+            border: 1px solid rgba(0,0,0,0.05);
+            border-radius: 12px; cursor: pointer;
+            font-size: 1.1rem; color: var(--color-texto);
+            text-align: center; transition: 0.3s ease;
+        }
+
+        .modo-normal .opcion-pan { background-color: var(--fondo-calido); border-color: #ffe0b2; }
+        .modo-invierno .opcion-pan { background-color: var(--fondo-frio); border-color: #bbdefb; }
+        .opcion-pan:hover { transform: scale(1.02); filter: brightness(0.95); }
+
+        .modo-libre-container input {
+            width: 80%; padding: 12px; margin: 10px 0;
+            border-radius: 10px; border: 1px solid #ccc; text-align: center;
+        }
+
+        .btn-emergencia {
+            width: 100%; max-width: 400px; margin-top: 20px; padding: 20px;
+            background: var(--color-rojo); color: white; border: none;
+            border-radius: 15px; font-size: 1.2rem; font-weight: bold;
+            cursor: pointer; box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🥐 Bakery's Emmanuel</h1>
+
+    <div class="monitor-container">
+        <div class="monitor-item">
+            <span>Temperatura</span>
+            <strong id="live-temp" class="temp-valor">-- °C</strong>
+        </div>
+        <div class="monitor-item">
+            <span>Restante</span>
+            <strong id="live-time">-- min</strong>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button id="btn-normal" class="active" onclick="cambiarVista('normal')">Menú Normal</button>
+        <button id="btn-invierno" onclick="cambiarVista('invierno')">Menú Invierno</button>
+        <button id="btn-libre" onclick="cambiarVista('libre')">Modo Libre</button>
+    </div>
+
+    <div id="contenedor-panes" class="modo-normal">
+        <div id="lista-panes"></div>
+    </div>
+
+    <div id="contenedor-libre" class="hidden modo-libre-container">
+        <p style="font-size: 0.8rem; color: #666;">Máximo: 300°C / 120 min</p>
+        <input type="number" id="tempL" placeholder="Temperatura °C">
+        <input type="number" id="timeL" placeholder="Minutos">
+        <button onclick="validarLibre()" style="background: var(--color-naranja); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: bold; margin-top: 10px; width: 85%;">
+            Iniciar Horno
+        </button>
+    </div>
+</div>
+
+<button class="btn-emergencia" onclick="paroEmergencia()">🚨 PARO DE EMERGENCIA</button>
+
+<script>
+    // CAMBIA ESTA IP por la que aparezca en el monitor serial de tu Arduino
+    const IP_ESP32 = "abcd-123.ngrok-free.app"; 
+
+    const recetas = {
+        normal: [
+            { n: "🍞 Pan Blanco", t: 180, m: 30 }, { n: "🍪 Galletas", t: 180, m: 13 },
+            { n: "🥯 Concha", t: 180, m: 18 }, { n: "🧁 Mantecada", t: 180, m: 20 },
+            { n: "🥐 Palmier", t: 200, m: 15 }, { n: "🍞 Panqué", t: 180, m: 40 },
+            { n: "🥟 Empanada", t: 180, m: 20 }
+        ],
+        invierno: [
+            { n: "🍞 Pan Blanco", t: 190, m: 32 }, { n: "🍪 Galletas", t: 185, m: 14 },
+            { n: "🥯 Concha", t: 185, m: 20 }, { n: "🧁 Mantecada", t: 185, m: 22 },
+            { n: "🥐 Palmier", t: 205, m: 16 }, { n: "🍞 Panqué", t: 185, m: 42 },
+            { n: "🥟 Empanada", t: 185, m: 22 }
+        ]
+    };
+
+    // Función para leer datos del ESP32 cada 2 segundos
+    function actualizarMonitor() {
+        fetch(`http://${IP_ESP32}/status`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('live-temp').innerText = data.temp + " °C";
+                if (data.activo) {
+                    document.getElementById('live-time').innerText = data.tiempo + " min";
+                    document.getElementById('live-time').style.color = "#e67e22";
+                } else {
+                    document.getElementById('live-time').innerText = "-- min";
+                    document.getElementById('live-time').style.color = "#5d4037";
+                }
+            })
+            .catch(err => console.log("Esperando conexión con el horno..."));
+    }
+
+    setInterval(actualizarMonitor, 2000);
+
+    function cambiarVista(modo) {
+        document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + modo).classList.add('active');
+
+        const contenedor = document.getElementById('contenedor-panes');
+        const libre = document.getElementById('contenedor-libre');
+
+        if (modo === 'libre') {
+            contenedor.classList.add('hidden');
+            libre.classList.remove('hidden');
+        } else {
+            contenedor.classList.remove('hidden');
+            libre.classList.add('hidden');
+            contenedor.className = (modo === 'normal') ? 'modo-normal' : 'modo-invierno';
+            renderizarLista(modo);
+        }
+    }
+
+    function renderizarLista(modo) {
+        const lista = document.getElementById('lista-panes');
+        lista.innerHTML = "";
+        recetas[modo].forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'opcion-pan';
+            div.innerText = p.n;
+            div.onclick = () => enviar(p.t, p.m, p.n);
+            lista.appendChild(div);
+        });
+    }
+
+    function enviar(t, m, nombre) {
+        fetch(`http://${IP_ESP32}/cocinar?temp=${t}&time=${m}`)
+            .then(res => {
+                if(res.ok) alert(`🔥 Iniciando: ${nombre}\n${t}°C - ${m}min`);
+            })
+            .catch(err => alert("Error de conexión con el ESP32"));
+    }
+
+    function validarLibre() {
+        const t = parseInt(document.getElementById('tempL').value);
+        const m = parseInt(document.getElementById('timeL').value);
+        if (t > 300 || m > 120) return alert("⚠️ Límite: 300°C / 120min");
+        if (isNaN(t) || isNaN(m)) return alert("Llena ambos campos");
+        enviar(t, m, "Modo Libre");
+    }
+
+    function paroEmergencia() {
+        if(confirm("🛑 ¿PARAR HORNO?")) {
+            enviar(0, 0, "PARO");
+            setTimeout(() => location.reload(), 500);
+        }
+    }
+
+    renderizarLista('normal');
+</script>
+
+</body>
+</html>
